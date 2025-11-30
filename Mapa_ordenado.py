@@ -8,10 +8,10 @@ import numpy as np
 st.set_page_config(layout="wide", page_title="Mapa de Calor Tráfico")
 
 
-st.title(" Visualización de Tráfico (Optimizado)")
+st.title(" Visualización de Tráfico (Optimizado chido)")
 
 
-# 1. Cargar datos con optimización de memoria
+#Cargar datos con optimización de memoria
 @st.cache_data(show_spinner=False)
 def load_and_process_data():
     status_bar = st.progress(0, text="Leyendo archivo masivo...")
@@ -29,11 +29,10 @@ def load_and_process_data():
 
     status_bar.progress(30, text="Limpiando coordenadas...")
    
-    # CORRECCIÓN CRÍTICA: Forzar a números. Si hay texto "basura", se convierte en NaN
+    #Forzar a números. Si hay texto "basura"
     df["Coordx"] = pd.to_numeric(df["Coordx"], errors='coerce')
     df["Coordy"] = pd.to_numeric(df["Coordy"], errors='coerce')
-   
-    # Eliminar filas que no tengan coordenadas válidas
+
     df = df.dropna(subset=["Coordx", "Coordy"])
 
 
@@ -47,12 +46,10 @@ def load_and_process_data():
     df["linear_color_weighting"] = pd.to_numeric(df["linear_color_weighting"], errors='coerce').fillna(0)
     weights = df["linear_color_weighting"].to_numpy()
    
-    # Vectorización rápida para colores
-    # R se basa en el peso. Si el peso es > 1, lo limitamos a 1 (clip)
+ 
     weights = np.clip(weights, 0, 1)
    
-    # Creamos lista de colores. Usamos int() para asegurar formato entero para PyDeck
-    # Formato: [R, G, B, A] -> Rojo variable, Transparencia fija (150)
+ 
     df["formatted_color"] = [
         [int(w * 255), 0, 0, 150] for w in weights
     ]
@@ -70,8 +67,6 @@ except FileNotFoundError:
     st.error("❌ Archivo 'data_sorted.csv' no encontrado.")
     st.stop()
 
-
-# --- DIAGNÓSTICO (Oculto por defecto) ---
 with st.expander("🔍 Ver datos cargados (Debug)"):
     st.write(f"Filas totales cargadas: {len(df)}")
     st.write(df.head())
@@ -96,7 +91,7 @@ with col1:
 
 
 with col2:
-    speed = st.slider("Velocidad (seg/hora)", 0.1, 2.0, 0.5)
+    speed = st.slider("Velocidad (normal, rápido, muy rápido)", 0.01, 3.0, 1.0)
 
 
 with col3:
@@ -117,7 +112,7 @@ def render_map(data, pitch=40):
         "ScatterplotLayer",
         data=data,
         get_position=["Coordx", "Coordy"],
-        get_radius=80,          # Radio visible
+        get_radius=80,
         get_fill_color="formatted_color",
         pickable=True,
         opacity=0.8,
@@ -132,7 +127,6 @@ def render_map(data, pitch=40):
         pitch=pitch,
     )
    
-    # CORRECCIÓN: Usamos el URL directo para evitar el error de atributo
     map_style_url = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
    
     map_placeholder.pydeck_chart(
@@ -144,7 +138,7 @@ def render_map(data, pitch=40):
     )
 
 
-# Renderizado Inicial
+# Renderizado inicial
 if not run_animation:
     first_hour = df["hour_bucket"].min()
     status_text.info(f"Vista previa: {first_hour}")
@@ -152,8 +146,7 @@ if not run_animation:
     render_map(initial_data)
 
 
-# Bucle de Animación
-# Bucle de Animación - 1 ms = 1 hora
+#Animación
 if run_animation:
     groups = df.groupby("hour_bucket")
 
@@ -161,10 +154,29 @@ if run_animation:
         if not run_animation:
             break
 
+        #Colores y tráfico
+        batch = batch.copy()
+
+        #Obtener pesos colores
+        if "exponential_color_weighting" in batch.columns:
+            w = pd.to_numeric(batch["exponential_color_weighting"], errors="coerce")
+        else:
+            w = pd.to_numeric(batch["linear_color_weighting"], errors="coerce")
+
+        w = w.fillna(0)
+        w = np.clip(w.to_numpy(), 0, 1)
+
+        #gradiente
+        formatted_colors = [
+            [int(255 * wi), int(255 * (1 - wi)), 0, 180] 
+            for wi in w
+        ]
+
+        batch["formatted_color"] = formatted_colors
+
         status_text.markdown(f"### 🕒 Hora: {current_hour}")
         render_map(batch)
 
-        # Cada milisegundo representa 1 hora
-        time.sleep(0.001)
+        time.sleep(0.001/speed)
 
     st.success("Fin de los datos.")
