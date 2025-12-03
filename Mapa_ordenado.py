@@ -4,109 +4,51 @@ import pydeck as pdk
 import time
 import numpy as np
 
-
 st.set_page_config(layout="wide", page_title="Mapa de Calor Tráfico")
+st.title("Visualización de Tráfico Guadalajara, Jalisco")
 
-
-st.title(" Visualización de Tráfico (Optimizado chido)")
-
-
-#Cargar datos con optimización de memoria
+#Carga datos
 @st.cache_data(show_spinner=False)
 def load_and_process_data():
-    status_bar = st.progress(0, text="Leyendo archivo masivo...")
-   
     cols_to_use = ["Coordx", "Coordy", "timestamp", "linear_color_weighting"]
-   
-    try:
-        # Intentamos leer solo columnas necesarias
-        df = pd.read_csv("data_sorted.csv", usecols=cols_to_use)
-    except ValueError:
-        # Fallback si los nombres no coinciden exacto
-        st.warning("Aviso: Nombres de columnas variaron, leyendo archivo completo...")
-        df = pd.read_csv("data_sorted.csv")
+    df = pd.read_csv("data_sorted.csv", usecols=cols_to_use)
 
-
-    status_bar.progress(30, text="Limpiando coordenadas...")
-   
-    #Forzar a números. Si hay texto "basura"
     df["Coordx"] = pd.to_numeric(df["Coordx"], errors='coerce')
     df["Coordy"] = pd.to_numeric(df["Coordy"], errors='coerce')
-
     df = df.dropna(subset=["Coordx", "Coordy"])
 
+    df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
+    df["hour_bucket"] = df["timestamp_utc"].dt.floor("h")
 
-    status_bar.progress(50, text="Procesando fechas...")
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df["hour_bucket"] = df["timestamp"].dt.floor("h")
-   
-    status_bar.progress(80, text="Calculando colores...")
-   
-    # Asegurar que el peso sea numérico y llenar vacíos con 0
-    df["linear_color_weighting"] = pd.to_numeric(df["linear_color_weighting"], errors='coerce').fillna(0)
-    weights = df["linear_color_weighting"].to_numpy()
-   
- 
-    weights = np.clip(weights, 0, 1)
-   
- 
-    df["formatted_color"] = [
-        [int(w * 255), 0, 0, 150] for w in weights
-    ]
-   
-    status_bar.progress(100, text="¡Datos listos!")
-    time.sleep(0.5)
-    status_bar.empty()
-   
+
+    df["linear_color_weighting"] = (
+        pd.to_numeric(df["linear_color_weighting"], errors="coerce")
+        .fillna(0)
+        .clip(0, 1)
+    )
+
     return df
 
+df = load_and_process_data()
 
-try:
-    df = load_and_process_data()
-except FileNotFoundError:
-    st.error("❌ Archivo 'data_sorted.csv' no encontrado.")
-    st.stop()
-
-with st.expander("🔍 Ver datos cargados (Debug)"):
-    st.write(f"Filas totales cargadas: {len(df)}")
-    st.write(df.head())
-    st.write("Tipos de datos:", df.dtypes)
-
-
-if df.empty:
-    st.error("El archivo se cargó pero no tiene datos válidos después de la limpieza.")
-    st.stop()
-
-
-# Configuración del mapa
 center_lat = df["Coordy"].mean()
 center_lon = df["Coordx"].mean()
 
-
 col1, col2, col3 = st.columns([1, 1, 3])
-
-
 with col1:
-    run_animation = st.checkbox("▶️ Activar Animación")
-
-
+    run_animation = st.checkbox("Activar/pausar Animación")
 with col2:
-    speed = st.slider("Velocidad (normal, rápido, muy rápido)", 0.01, 3.0, 1.0)
-
-
+    speed = st.slider("Velocidad", 0.01, 3.0, 1.0)
 with col3:
     status_text = st.empty()
 
-
 map_placeholder = st.empty()
 
-
-# Función helper para dibujar mapa
-def render_map(data, pitch=40):
+#Renderizado
+def render_map(data):
     if data.empty:
-        st.warning("⚠️ No hay datos para este periodo.")
+        st.warning("No hay datos para esta hora.")
         return
-
 
     layer = pdk.Layer(
         "ScatterplotLayer",
@@ -117,66 +59,49 @@ def render_map(data, pitch=40):
         pickable=True,
         opacity=0.8,
         filled=True,
-        stroked=False
-    )
-   
+        stroked=False)
+
     view_state = pdk.ViewState(
         latitude=center_lat,
         longitude=center_lon,
         zoom=11,
-        pitch=pitch,
-    )
-   
-    map_style_url = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-   
+        pitch=40,)
+
     map_placeholder.pydeck_chart(
-        pdk.Deck(
-            layers=[layer],
-            initial_view_state=view_state,
-            map_style=map_style_url
-        )
-    )
-
-
-# Renderizado inicial
-if not run_animation:
-    first_hour = df["hour_bucket"].min()
-    status_text.info(f"Vista previa: {first_hour}")
-    initial_data = df[df["hour_bucket"] == first_hour]
-    render_map(initial_data)
-
+        pdk.Deck(layers=[layer], initial_view_state=view_state,
+                 map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"))
 
 #Animación
+if "current_hour_index" not in st.session_state:
+    st.session_state.current_hour_index = 0
+
+# Vista fija si no está animando
+if not run_animation:
+    first_hour = df["hour_bucket"].min()
+    subset = df[df["hour_bucket"] == first_hour]
+    subset["formatted_color"] = [[255, 100, 0, 150]] * len(subset)
+    status_text.info(f"Vista inicial: {first_hour}")
+    render_map(subset)
+
 if run_animation:
-    groups = df.groupby("hour_bucket")
+    groups = list(df.groupby("hour_bucket"))
+    start_index = st.session_state.current_hour_index
+    for idx in range(start_index, len(groups)):
+        current_hour, batch = groups[idx]
+# Guardar avance
+        st.session_state.current_hour_index = idx
 
-    for current_hour, batch in groups:
-        if not run_animation:
-            break
+        w = batch["linear_color_weighting"].to_numpy()
+        batch["formatted_color"] = [
+            [int(255 * wi), int(255 * (1 - wi)), 0, 180]
+            for wi in w]
 
-        #Colores y tráfico
-        batch = batch.copy()
-
-        #Obtener pesos colores
-        if "exponential_color_weighting" in batch.columns:
-            w = pd.to_numeric(batch["exponential_color_weighting"], errors="coerce")
-        else:
-            w = pd.to_numeric(batch["linear_color_weighting"], errors="coerce")
-
-        w = w.fillna(0)
-        w = np.clip(w.to_numpy(), 0, 1)
-
-        #gradiente
-        formatted_colors = [
-            [int(255 * wi), int(255 * (1 - wi)), 0, 180] 
-            for wi in w
-        ]
-
-        batch["formatted_color"] = formatted_colors
-
-        status_text.markdown(f"### 🕒 Hora: {current_hour}")
+        # Tiempo
+        frame_utc = batch["timestamp_utc"].iloc[0]
+        status_text.markdown(
+        f"### Hora UTC: **{frame_utc.strftime('%Y-%m-%d %H:%M:%S%z')[:-2] + ':' + frame_utc.strftime('%z')[-2:]}**")
         render_map(batch)
 
-        time.sleep(0.001/speed)
+        time.sleep(0.001 / speed)
 
     st.success("Fin de los datos.")
