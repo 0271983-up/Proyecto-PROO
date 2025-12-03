@@ -9,7 +9,7 @@ st.title("Bienvenidos al proyecto de Programación Orientada a Objetos: Mapa de 
 st.subheader("Visualización de Tráfico Guadalajara, Jalisco")
 
 #Carga datos
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=True)
 def load_and_process_data():
     cols_to_use = ["Coordx", "Coordy", "timestamp", "linear_color_weighting"]
     df = pd.read_csv("data_sorted.csv", usecols=cols_to_use)
@@ -32,16 +32,16 @@ def load_and_process_data():
 
 df = load_and_process_data()
 
-center_lat = df["Coordy"].mean()
-center_lon = df["Coordx"].mean()
+centro_y = df["Coordy"].mean() #Promedio de las miles de líneas en y
+centro_x = df["Coordx"].mean() #Lo mimso pero en x, todo gracias al .mean()
 
 col1, col2, col3 = st.columns([1, 1, 3])
 with col1:
-    run_animation = st.checkbox("Activar/pausar Animación")
+    animacion = st.checkbox("Activar/pausar Animación")
 with col2:
     speed = st.slider("Velocidad", 0.01, 3.0, 1.0)
 with col3:
-    status_text = st.empty()
+    tiempo_mapa = st.empty()
 
 map_placeholder = st.empty()
 
@@ -63,8 +63,8 @@ def render_map(data):
         stroked=False)
 
     view_state = pdk.ViewState(
-        latitude=center_lat,
-        longitude=center_lon,
+        latitude=centro_y,
+        longitude=centro_x,
         zoom=11,
         pitch=40,)
 
@@ -77,14 +77,14 @@ if "current_hour_index" not in st.session_state:
     st.session_state.current_hour_index = 0
 
 # Vista fija si no está animando
-if not run_animation:
+if not animacion:
     first_hour = df["hour_bucket"].min()
     subset = df[df["hour_bucket"] == first_hour]
     subset["formatted_color"] = [[255, 100, 0, 150]] * len(subset)
-    status_text.info(f"Vista inicial: {first_hour}")
+    tiempo_mapa.info(f"Vista inicial: {first_hour}")
     render_map(subset)
 
-if run_animation:
+if animacion:
     groups = list(df.groupby("hour_bucket"))
     start_index = st.session_state.current_hour_index
     for idx in range(start_index, len(groups)):
@@ -99,7 +99,7 @@ if run_animation:
 
         # Tiempo
         frame_utc = batch["timestamp_utc"].iloc[0]
-        status_text.markdown(
+        tiempo_mapa.markdown(
         f"### Hora UTC: **{frame_utc.strftime('%Y-%m-%d %H:%M:%S%z')[:-2] + ':' + frame_utc.strftime('%z')[-2:]}**")
         render_map(batch)
 
