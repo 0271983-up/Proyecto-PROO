@@ -10,7 +10,7 @@ st.subheader("Visualización de Tráfico Guadalajara, Jalisco")
 
 #Carga datos
 @st.cache_data(show_spinner=True)
-def load_and_process_data():
+def cargando_datos():
     cols_to_use = ["Coordx", "Coordy", "timestamp", "linear_color_weighting"]
     df = pd.read_csv("data_sorted.csv", usecols=cols_to_use)
 
@@ -25,12 +25,10 @@ def load_and_process_data():
     df["linear_color_weighting"] = (
         pd.to_numeric(df["linear_color_weighting"], errors="coerce")
         .fillna(0)
-        .clip(0, 1)
-    )
-
+        .clip(0, 1))
     return df
 
-df = load_and_process_data()
+df = cargando_datos()
 
 centro_y = df["Coordy"].mean() #Promedio de las miles de líneas en y
 centro_x = df["Coordx"].mean() #Lo mimso pero en x, todo gracias al .mean()
