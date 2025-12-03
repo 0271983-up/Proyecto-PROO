@@ -5,7 +5,8 @@ import time
 import numpy as np
 
 st.set_page_config(layout="wide", page_title="Mapa de Calor Tráfico")
-st.title("Visualización de Tráfico Guadalajara, Jalisco")
+st.title("Bienvenidos al proyecto de Programación Orientada a Objetos: Mapa de calor")
+st.subheader("Visualización de Tráfico Guadalajara, Jalisco")
 
 #Carga datos
 @st.cache_data(show_spinner=False)
